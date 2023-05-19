@@ -1,8 +1,14 @@
-use std::{env, path::PathBuf, process::exit};
+#[macro_use]
+extern crate log;
+extern crate env_logger;
 
 use inotify::{Inotify, WatchMask};
+use std::{env, path::PathBuf, process::exit};
 
 fn main() {
+    env::set_var("RUST_LOG", "info");
+    env_logger::init();
+
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         println!("Invalid arguments");
@@ -20,11 +26,12 @@ fn main() {
                 | WatchMask::MODIFY
                 | WatchMask::MOVED_FROM
                 | WatchMask::MOVED_TO
-                | WatchMask::ATTRIB,
+                | WatchMask::ATTRIB
+                | WatchMask::OPEN,
         )
         .expect("Failed to add watch");
 
-    println!("Watching...");
+    println!("Watching at \"{}\"...", args[1]);
 
     let mut buffer = [0; 4096];
 
@@ -34,7 +41,7 @@ fn main() {
             .expect("Failed to read events");
 
         for event in events {
-            println!("{:?}", event);
+            info!("{:?}", event);
         }
     }
 }
