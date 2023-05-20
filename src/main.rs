@@ -16,7 +16,7 @@ use std::{
 };
 
 use crate::{
-    analyzer::{AnalyzedLevel, Analyzer},
+    analyzer::{AnalyzedLevel, Analyzer, LiskType},
     definitions::Definitions,
 };
 
@@ -52,7 +52,7 @@ fn main() {
     println!("Loaded {} definitions", definitions.len());
 
     // initialize analyzer
-    let mut analyzer = Analyzer::new();
+    let mut analyzer = Analyzer::new(definitions);
 
     // start watching
     println!("Watching at \"{}\"...", args[1]);
@@ -75,29 +75,31 @@ fn main() {
             analyzer.set_analyzing_filepath(filepath);
 
             if event.mask.contains(EventMask::MODIFY) || event.mask.contains(EventMask::MOVED_TO) {
-                analyzer.analyze_heuristic();
-            }
+                let lisk_type = match analyzer.analyze_heuristic() {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
 
-            if analyzer.analyzed_level() == AnalyzedLevel::Heuristic {
-                // remove this file
-                if let Some(def) = definitions
-                    .iter()
-                    .find(|def| def.hash == analyzer.sha256_hash())
-                {
-                    warn!(
-                        "Detected malware file \"{}\" is \"{}\",  removing...",
-                        analyzer.analyzing_filepath().display(),
-                        &def.title
-                    );
+                info!("Lisk type: {:?}", lisk_type);
 
-                    match remove_file(analyzer.analyzing_filepath()) {
-                        Ok(_) => info!("Successfully removed file"),
-                        Err(err) => error!("Failed to remove file: {}", err),
+                match lisk_type {
+                    LiskType::None => continue,
+                    LiskType::DangerHash(def) => {
+                        warn!(
+                            "Detected malware file: \"{}\" is \"{}\",  removing...",
+                            analyzer.analyzing_filepath().display(),
+                            def.title
+                        );
+
+                        match remove_file(analyzer.analyzing_filepath()) {
+                            Ok(_) => info!("Successfully to remove file!"),
+                            Err(err) => error!("Failed to remove file: {}", err),
+                        }
+
+                        continue;
                     }
-                } else {
-                    // support ELF file only
-                    if *analyzer.file_format() == FileFormat::ExecutableAndLinkableFormat {
-                        analyzer.analyze_static();
+                    LiskType::IncludeSuspiciousStrings(strings) => {
+                        warn!("Suspicious strings found: {:?}", strings);
                     }
                 }
             }
