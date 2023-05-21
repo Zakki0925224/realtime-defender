@@ -5,9 +5,7 @@ extern crate env_logger;
 mod analyzer;
 mod definitions;
 
-use file_format::FileFormat;
 use inotify::{EventMask, Inotify, WatchMask};
-use serde::__private::de;
 use std::{
     env,
     fs::remove_file,
@@ -15,10 +13,7 @@ use std::{
     process::exit,
 };
 
-use crate::{
-    analyzer::{AnalyzedLevel, Analyzer, LiskType},
-    definitions::Definitions,
-};
+use crate::{analyzer::*, definitions::Definitions};
 
 fn main() {
     env::set_var("RUST_LOG", "info");
@@ -83,7 +78,6 @@ fn main() {
                 info!("Lisk type: {:?}", lisk_type);
 
                 match lisk_type {
-                    LiskType::None => continue,
                     LiskType::DangerHash(def) => {
                         warn!(
                             "Detected malware file: \"{}\" is \"{}\",  removing...",
@@ -99,8 +93,23 @@ fn main() {
                         continue;
                     }
                     LiskType::IncludeSuspiciousStrings(strings) => {
-                        warn!("Suspicious strings found: {:?}", strings);
+                        warn!("Suspicious strings was found: {:?}", strings);
                     }
+                    _ => (),
+                }
+
+                // support ELF file only
+                let lisk_type = match analyzer.analyze_static() {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+
+                match lisk_type {
+                    LiskType::None => continue,
+                    LiskType::HasVulnerableScanf => {
+                        warn!("Vulnerable scanf code was found!")
+                    }
+                    _ => unreachable!(),
                 }
             }
         }
